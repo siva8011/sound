@@ -1,0 +1,736 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AstroDither — Robert Borghesi LAB — [SIGNAL. LOST. BEAUTY. FOUND. DIGITAL. CHAOS.]</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Bebas+Neue&display=swap');
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #000;
+      --fg: #f0ece0;
+      --accent: #ff4a00;
+      --dim: rgba(240,236,224,0.35);
+      --border: rgba(240,236,224,0.12);
+      --mono: 'Space Mono', monospace;
+      --display: 'Bebas Neue', sans-serif;
+    }
+
+    html, body {
+      width: 100%; height: 100%;
+      background: var(--bg);
+      color: var(--fg);
+      font-family: var(--mono);
+      overflow: hidden;
+      cursor: crosshair;
+    }
+
+    /* ── CANVAS ─────────────────────────────── */
+    #bg-canvas {
+      position: fixed; inset: 0;
+      width: 100%; height: 100%;
+      z-index: 0;
+    }
+
+    /* ── DITHER OVERLAY ──────────────────────── */
+    #dither-overlay {
+      position: fixed; inset: 0;
+      z-index: 1;
+      pointer-events: none;
+      opacity: 0.04;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='4' height='4'%3E%3Crect x='0' y='0' width='1' height='1' fill='white'/%3E%3Crect x='2' y='2' width='1' height='1' fill='white'/%3E%3C/svg%3E");
+      background-size: 4px 4px;
+      mix-blend-mode: screen;
+    }
+
+    /* ── GRAIN ───────────────────────────────── */
+    #grain {
+      position: fixed; inset: -50%;
+      width: 200%; height: 200%;
+      z-index: 2;
+      pointer-events: none;
+      opacity: 0.06;
+      animation: grain-shift 0.12s steps(1) infinite;
+    }
+    @keyframes grain-shift {
+      0%  { transform: translate(0,0); }
+      10% { transform: translate(-2%,-3%); }
+      20% { transform: translate(3%,1%); }
+      30% { transform: translate(-1%,4%); }
+      40% { transform: translate(4%,-2%); }
+      50% { transform: translate(-3%,3%); }
+      60% { transform: translate(2%,-4%); }
+      70% { transform: translate(-4%,2%); }
+      80% { transform: translate(1%,-1%); }
+      90% { transform: translate(-2%,4%); }
+      100%{ transform: translate(3%,-3%); }
+    }
+
+    /* ── ENTER OVERLAY ───────────────────────── */
+    #enter-overlay {
+      position: fixed; inset: 0;
+      z-index: 50;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #000;
+      cursor: pointer;
+      transition: opacity 0.8s ease;
+    }
+    #enter-overlay.hidden {
+      opacity: 0;
+      pointer-events: none;
+    }
+    #enter-text {
+      font-family: var(--mono);
+      font-size: clamp(10px, 1.2vw, 14px);
+      letter-spacing: 0.25em;
+      color: var(--fg);
+      text-align: center;
+      animation: blink 1.4s step-start infinite;
+      border: 1px solid var(--border);
+      padding: 18px 32px;
+    }
+    @keyframes blink {
+      0%, 100% { opacity: 1; }
+      50%       { opacity: 0; }
+    }
+    #enter-overlay::before {
+      content: '';
+      position: absolute; inset: 0;
+      background: repeating-linear-gradient(
+        0deg,
+        transparent,
+        transparent 2px,
+        rgba(255,255,255,0.015) 2px,
+        rgba(255,255,255,0.015) 4px
+      );
+      pointer-events: none;
+    }
+
+    /* ── SCANLINES ───────────────────────────── */
+    #scanlines {
+      position: fixed; inset: 0;
+      z-index: 3;
+      pointer-events: none;
+      background: repeating-linear-gradient(
+        0deg,
+        transparent,
+        transparent 2px,
+        rgba(0,0,0,0.08) 2px,
+        rgba(0,0,0,0.08) 4px
+      );
+    }
+
+    /* ── LOGO ────────────────────────────────── */
+    #logo {
+      position: fixed;
+      top: 28px; left: 32px;
+      z-index: 10;
+      font-family: var(--mono);
+      font-size: 10px;
+      letter-spacing: 0.2em;
+      color: var(--dim);
+      text-decoration: none;
+      opacity: 0;
+      transition: opacity 0.6s ease 0.5s, color 0.2s;
+    }
+    #logo.visible { opacity: 1; }
+    #logo:hover { color: var(--fg); }
+
+    /* ── TITLE BLOCK ─────────────────────────── */
+    #title-block {
+      position: fixed;
+      bottom: 40px; left: 32px;
+      z-index: 10;
+      opacity: 0;
+      transition: opacity 0.6s ease 0.7s;
+    }
+    #title-block.visible { opacity: 1; }
+    #main-title {
+      font-family: var(--display);
+      font-size: clamp(52px, 9vw, 120px);
+      line-height: 0.9;
+      letter-spacing: 0.02em;
+      color: var(--fg);
+      mix-blend-mode: difference;
+    }
+    #sub-title {
+      font-family: var(--mono);
+      font-size: 10px;
+      letter-spacing: 0.18em;
+      color: var(--dim);
+      margin-top: 10px;
+    }
+
+    /* ── TIMER ───────────────────────────────── */
+    #timer-block {
+      position: fixed;
+      top: 28px; right: 32px;
+      z-index: 10;
+      text-align: right;
+      opacity: 0;
+      transition: opacity 0.6s ease 0.6s;
+    }
+    #timer-block.visible { opacity: 1; }
+    #timer-display {
+      font-family: var(--mono);
+      font-size: clamp(18px, 2.5vw, 28px);
+      letter-spacing: 0.12em;
+      color: var(--fg);
+    }
+    #timer-display span { color: var(--accent); }
+    #speed-label {
+      font-size: 9px;
+      letter-spacing: 0.2em;
+      color: var(--dim);
+      margin-top: 4px;
+    }
+
+    /* ── INFO BUTTON ─────────────────────────── */
+    #info-btn {
+      position: fixed;
+      top: 50%; right: 32px;
+      transform: translateY(-50%);
+      z-index: 10;
+      background: none;
+      border: 1px solid var(--border);
+      color: var(--fg);
+      font-family: var(--mono);
+      font-size: 9px;
+      letter-spacing: 0.2em;
+      padding: 10px 16px;
+      cursor: pointer;
+      opacity: 0;
+      transition: opacity 0.6s ease 0.9s, background 0.2s, color 0.2s;
+      writing-mode: vertical-rl;
+    }
+    #info-btn.visible { opacity: 1; }
+    #info-btn:hover { background: var(--fg); color: var(--bg); }
+
+    /* ── INFO PANEL ──────────────────────────── */
+    #info-panel {
+      position: fixed;
+      top: 0; right: 0;
+      width: min(420px, 90vw);
+      height: 100%;
+      z-index: 20;
+      background: rgba(0,0,0,0.92);
+      border-left: 1px solid var(--border);
+      padding: 80px 40px 40px;
+      transform: translateX(100%);
+      transition: transform 0.5s cubic-bezier(0.16,1,0.3,1);
+      overflow-y: auto;
+      backdrop-filter: blur(12px);
+    }
+    #info-panel.open { transform: translateX(0); }
+
+    #close-btn {
+      position: absolute;
+      top: 28px; right: 32px;
+      background: none;
+      border: none;
+      color: var(--fg);
+      font-family: var(--mono);
+      font-size: 10px;
+      letter-spacing: 0.2em;
+      cursor: pointer;
+    }
+    #close-btn:hover { color: var(--accent); }
+
+    .panel-section {
+      margin-bottom: 40px;
+    }
+    .panel-label {
+      font-size: 9px;
+      letter-spacing: 0.25em;
+      color: var(--dim);
+      margin-bottom: 12px;
+      text-transform: uppercase;
+    }
+    .panel-text {
+      font-size: 11px;
+      line-height: 1.8;
+      letter-spacing: 0.04em;
+      color: var(--fg);
+    }
+    .panel-link {
+      display: block;
+      font-size: 11px;
+      letter-spacing: 0.12em;
+      color: var(--fg);
+      text-decoration: none;
+      margin-top: 8px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--border);
+      transition: color 0.2s, border-color 0.2s;
+    }
+    .panel-link:hover { color: var(--accent); border-color: var(--accent); }
+
+    /* ── MARQUEE ─────────────────────────────── */
+    #marquee-wrap {
+      position: fixed;
+      bottom: 0; left: 0; right: 0;
+      z-index: 10;
+      overflow: hidden;
+      border-top: 1px solid var(--border);
+      background: rgba(0,0,0,0.5);
+      height: 28px;
+      display: flex;
+      align-items: center;
+      opacity: 0;
+      transition: opacity 0.6s ease 1.1s;
+    }
+    #marquee-wrap.visible { opacity: 1; }
+    .marquee-track {
+      display: flex;
+      gap: 60px;
+      animation: marquee 18s linear infinite;
+      white-space: nowrap;
+    }
+    .marquee-track span {
+      font-size: 9px;
+      letter-spacing: 0.22em;
+      color: var(--dim);
+      text-transform: uppercase;
+    }
+    .marquee-track span.accent { color: var(--accent); }
+    @keyframes marquee {
+      from { transform: translateX(0); }
+      to   { transform: translateX(-50%); }
+    }
+
+    /* ── ABERRATION FLASH ────────────────────── */
+    #aberration {
+      position: fixed; inset: 0;
+      z-index: 4;
+      pointer-events: none;
+      opacity: 0;
+      mix-blend-mode: screen;
+      background: transparent;
+    }
+    #aberration.flash {
+      animation: aber-flash 0.18s ease forwards;
+    }
+    @keyframes aber-flash {
+      0%  { opacity: 0; background: rgba(255,0,50,0.07); }
+      30% { opacity: 1; }
+      100%{ opacity: 0; }
+    }
+
+    /* ── CORNER COORDS ───────────────────────── */
+    #coords {
+      position: fixed;
+      bottom: 36px; right: 32px;
+      z-index: 10;
+      font-size: 9px;
+      letter-spacing: 0.18em;
+      color: var(--dim);
+      opacity: 0;
+      transition: opacity 0.6s ease 1s;
+    }
+    #coords.visible { opacity: 1; }
+
+    /* ── AUDIO BAR ───────────────────────────── */
+    #audio-bar {
+      position: fixed;
+      bottom: 36px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 10;
+      display: flex;
+      gap: 3px;
+      align-items: flex-end;
+      height: 20px;
+      opacity: 0;
+      transition: opacity 0.6s ease 1.2s;
+    }
+    #audio-bar.visible { opacity: 1; }
+    .bar-segment {
+      width: 3px;
+      background: var(--accent);
+      border-radius: 1px;
+      transition: height 0.08s ease;
+    }
+  </style>
+</head>
+<body>
+
+<!-- Canvases & overlays -->
+<canvas id="bg-canvas"></canvas>
+<div id="dither-overlay"></div>
+<canvas id="grain"></canvas>
+<div id="scanlines"></div>
+<div id="aberration"></div>
+
+<!-- Enter screen -->
+<div id="enter-overlay">
+  <div id="enter-text">:: CLICK TO ENTER + ENABLE AUDIO ::</div>
+</div>
+
+<!-- Logo -->
+<a id="logo" href="https://robertborghesi.is/" target="_blank">ROBERTBORGHESI.IS ↗</a>
+
+<!-- Timer -->
+<div id="timer-block">
+  <div id="timer-display">00<span>:</span>00<span>:</span>00</div>
+  <div id="speed-label">HOLD FOR SPEED · CLICK FOR SPEED&nbsp;&nbsp;1:00x</div>
+</div>
+
+<!-- Title -->
+<div id="title-block">
+  <div id="main-title">ASTRO<br>DITHER</div>
+  <div id="sub-title">A THREEJS / WEBGPU EXPERIMENT — DITHERING + FLUID</div>
+</div>
+
+<!-- Info btn -->
+<button id="info-btn" aria-label="Info">LEARN MORE</button>
+
+<!-- Coords -->
+<div id="coords" id="coords">LAT 41.8902° · LON 12.4922°</div>
+
+<!-- Audio visualiser bars -->
+<div id="audio-bar"></div>
+
+<!-- Marquee -->
+<div id="marquee-wrap">
+  <div class="marquee-track">
+    <span class="accent">[SIGNAL.</span><span>LOST.</span><span class="accent">BEAUTY.</span><span>FOUND.</span><span class="accent">DIGITAL.</span><span>CHAOS.]</span>
+    <span>DITHER</span><span class="accent">×</span><span>FLUID</span><span>×</span><span>WEBGPU</span><span class="accent">×</span><span>TSL</span><span>×</span><span>THREEJS</span><span class="accent">×</span>
+    <span class="accent">[SIGNAL.</span><span>LOST.</span><span class="accent">BEAUTY.</span><span>FOUND.</span><span class="accent">DIGITAL.</span><span>CHAOS.]</span>
+    <span>DITHER</span><span class="accent">×</span><span>FLUID</span><span>×</span><span>WEBGPU</span><span class="accent">×</span><span>TSL</span><span>×</span><span>THREEJS</span><span class="accent">×</span>
+  </div>
+</div>
+
+<!-- Info panel -->
+<div id="info-panel">
+  <button id="close-btn">CLOSE ×</button>
+
+  <div class="panel-section">
+    <div class="panel-label">About</div>
+    <p class="panel-text">AstroDither is an audio reactive TSL &amp; WebGPU experiment built with ThreeJS. This started after seeing an online GIF — a decision to recreate it, exploring new tech like TSL with WebGPU.<br><br>Nothing fancy, just goooood old R&amp;D.</p>
+  </div>
+
+  <div class="panel-section">
+    <div class="panel-label">Some Random Tech</div>
+    <p class="panel-text">Despite what you think, a lot is happening here. There is a custom dither on the model only, needed to mix with a generic scene and a custom fluid built from scratch in a single pass for performance. On top of that a dither + displacement in postprocessing and selective bloom without masks — just fancy tricks. Oh wait, did you see the aberration?</p>
+  </div>
+
+  <div class="panel-section">
+    <div class="panel-label">[signal. lost. beauty. found. digital. chaos.]</div>
+  </div>
+
+  <div class="panel-section">
+    <div class="panel-label">X</div>
+    <a class="panel-link" href="https://x.com/dghez_" target="_blank">@dghez_</a>
+  </div>
+
+  <div class="panel-section">
+    <div class="panel-label">WBST</div>
+    <a class="panel-link" href="https://robertborghesi.is/" target="_blank">robertborghesi.is</a>
+  </div>
+
+  <div class="panel-section">
+    <div class="panel-label">INSPO</div>
+    <a class="panel-link" href="https://www.newyorker.com/magazine/2024/12/02/a-revolution-in-how-robots-learn" target="_blank">New Yorker article</a>
+  </div>
+</div>
+
+<!-- Three.js -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+<script>
+/* ─────────────────────────────────────────────
+   GRAIN CANVAS
+───────────────────────────────────────────── */
+(function () {
+  const c = document.getElementById('grain');
+  const ctx = c.getContext('2d');
+  function resize() { c.width = window.innerWidth * 2; c.height = window.innerHeight * 2; }
+  resize();
+  window.addEventListener('resize', resize);
+
+  function drawGrain() {
+    const { width: w, height: h } = c;
+    const img = ctx.createImageData(w, h);
+    const d = img.data;
+    for (let i = 0; i < d.length; i += 4) {
+      const v = Math.random() * 255 | 0;
+      d[i] = d[i+1] = d[i+2] = v;
+      d[i+3] = 255;
+    }
+    ctx.putImageData(img, 0, 0);
+    requestAnimationFrame(drawGrain);
+  }
+  drawGrain();
+})();
+
+/* ─────────────────────────────────────────────
+   AUDIO BARS (fake vis)
+───────────────────────────────────────────── */
+const audioBar = document.getElementById('audio-bar');
+const BARS = 24;
+const barEls = [];
+for (let i = 0; i < BARS; i++) {
+  const el = document.createElement('div');
+  el.className = 'bar-segment';
+  el.style.height = '2px';
+  audioBar.appendChild(el);
+  barEls.push(el);
+}
+
+let audioActive = false;
+let barHeights = new Array(BARS).fill(2);
+
+function updateBars() {
+  if (!audioActive) return;
+  barHeights = barHeights.map((h, i) => {
+    const target = 2 + Math.random() * 18 * (1 + 0.5 * Math.sin(Date.now() * 0.003 + i * 0.4));
+    return h + (target - h) * 0.25;
+  });
+  barEls.forEach((el, i) => {
+    el.style.height = barHeights[i].toFixed(1) + 'px';
+  });
+}
+
+/* ─────────────────────────────────────────────
+   THREE.JS SCENE
+───────────────────────────────────────────── */
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(60, innerWidth / innerHeight, 0.1, 100);
+camera.position.set(0, 0, 4);
+
+const renderer = new THREE.WebGLRenderer({
+  canvas: document.getElementById('bg-canvas'),
+  antialias: false,
+  alpha: false
+});
+renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));
+renderer.setSize(innerWidth, innerHeight);
+renderer.setClearColor(0x000000, 1);
+
+// ── Lights
+const ambientLight = new THREE.AmbientLight(0xffffff, 0.3);
+scene.add(ambientLight);
+const pointLight1 = new THREE.PointLight(0xff4a00, 3, 12);
+pointLight1.position.set(3, 3, 3);
+scene.add(pointLight1);
+const pointLight2 = new THREE.PointLight(0x3040ff, 2, 10);
+pointLight2.position.set(-3, -2, 2);
+scene.add(pointLight2);
+
+// ── Icosahedron (main dithered sphere)
+const geoSphere = new THREE.IcosahedronGeometry(1.1, 5);
+const matSphere = new THREE.MeshStandardMaterial({
+  color: 0xf0ece0,
+  roughness: 0.85,
+  metalness: 0.1,
+  wireframe: false,
+});
+const mesh = new THREE.Mesh(geoSphere, matSphere);
+scene.add(mesh);
+
+// ── Wireframe ghost
+const geoWire = new THREE.IcosahedronGeometry(1.18, 2);
+const matWire = new THREE.MeshBasicMaterial({
+  color: 0xff4a00,
+  wireframe: true,
+  transparent: true,
+  opacity: 0.12,
+});
+const wireMesh = new THREE.Mesh(geoWire, matWire);
+scene.add(wireMesh);
+
+// ── Particles
+const PART_COUNT = 1800;
+const partPositions = new Float32Array(PART_COUNT * 3);
+for (let i = 0; i < PART_COUNT; i++) {
+  const theta = Math.random() * Math.PI * 2;
+  const phi = Math.acos(2 * Math.random() - 1);
+  const r = 2.2 + Math.random() * 6;
+  partPositions[i*3]     = r * Math.sin(phi) * Math.cos(theta);
+  partPositions[i*3 + 1] = r * Math.sin(phi) * Math.sin(theta);
+  partPositions[i*3 + 2] = r * Math.cos(phi);
+}
+const partGeo = new THREE.BufferGeometry();
+partGeo.setAttribute('position', new THREE.BufferAttribute(partPositions, 3));
+const partMat = new THREE.PointsMaterial({
+  color: 0xf0ece0, size: 0.018, transparent: true, opacity: 0.6
+});
+const particles = new THREE.Points(partGeo, partMat);
+scene.add(particles);
+
+// ── Dither post-process (CPU dithering on a secondary canvas)
+const ditherCanvas = document.createElement('canvas');
+ditherCanvas.style.cssText = 'position:fixed;inset:0;width:100%;height:100%;z-index:5;pointer-events:none;image-rendering:pixelated;mix-blend-mode:overlay;opacity:0.18';
+document.body.appendChild(ditherCanvas);
+const dCtx = ditherCanvas.getContext('2d');
+
+// Bayer 4×4 matrix
+const BAYER = [
+   0,  8,  2, 10,
+  12,  4, 14,  6,
+   3, 11,  1,  9,
+  15,  7, 13,  5
+];
+
+function applyDither(srcCanvas, dstCtx, dstW, dstH) {
+  const SCALE = 6;
+  const w = Math.floor(srcCanvas.width / SCALE);
+  const h = Math.floor(srcCanvas.height / SCALE);
+  const offscreen = document.createElement('canvas');
+  offscreen.width = w; offscreen.height = h;
+  const oc = offscreen.getContext('2d');
+  oc.drawImage(srcCanvas, 0, 0, w, h);
+  const imgData = oc.getImageData(0, 0, w, h);
+  const d = imgData.data;
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const idx = (y * w + x) * 4;
+      const gray = 0.299 * d[idx] + 0.587 * d[idx+1] + 0.114 * d[idx+2];
+      const threshold = (BAYER[(y % 4) * 4 + (x % 4)] / 16) * 255;
+      const val = gray > threshold ? 255 : 0;
+      d[idx] = d[idx+1] = d[idx+2] = val;
+      d[idx+3] = val === 0 ? 0 : 80;
+    }
+  }
+  oc.putImageData(imgData, 0, 0);
+  dstCtx.clearRect(0, 0, dstW, dstH);
+  dstCtx.imageSmoothingEnabled = false;
+  dstCtx.drawImage(offscreen, 0, 0, dstW, dstH);
+}
+
+function resizeDither() {
+  ditherCanvas.width = Math.floor(innerWidth / 2);
+  ditherCanvas.height = Math.floor(innerHeight / 2);
+  ditherCanvas.style.width = innerWidth + 'px';
+  ditherCanvas.style.height = innerHeight + 'px';
+}
+resizeDither();
+
+// ── Mouse tracking
+let mouseX = 0, mouseY = 0;
+window.addEventListener('mousemove', e => {
+  mouseX = (e.clientX / innerWidth - 0.5) * 2;
+  mouseY = -(e.clientY / innerHeight - 0.5) * 2;
+});
+
+// ── Resize
+window.addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+  resizeDither();
+});
+
+// ── Animation
+let ditherTimer = 0;
+let aberTimer = 0;
+const aberEl = document.getElementById('aberration');
+
+function animate(t) {
+  requestAnimationFrame(animate);
+
+  const time = t * 0.001;
+
+  // Sphere rotation
+  mesh.rotation.y = time * 0.15 + mouseX * 0.3;
+  mesh.rotation.x = time * 0.08 + mouseY * 0.2;
+  wireMesh.rotation.y = time * 0.22;
+  wireMesh.rotation.x = time * 0.11;
+
+  // Breathing scale
+  const breathe = 1 + 0.015 * Math.sin(time * 1.2);
+  mesh.scale.setScalar(breathe);
+  wireMesh.scale.setScalar(breathe * 1.04);
+
+  // Particles drift
+  particles.rotation.y = time * 0.04;
+  particles.rotation.x = time * 0.02;
+
+  // Lights orbit
+  pointLight1.position.x = 3 * Math.cos(time * 0.4);
+  pointLight1.position.z = 3 * Math.sin(time * 0.4);
+  pointLight2.position.x = -3 * Math.cos(time * 0.3 + 1);
+  pointLight2.position.z = -3 * Math.sin(time * 0.3 + 1);
+
+  // Camera subtle drift
+  camera.position.x = mouseX * 0.4;
+  camera.position.y = mouseY * 0.3;
+  camera.lookAt(0, 0, 0);
+
+  renderer.render(scene, camera);
+
+  // Dithering every ~4 frames
+  ditherTimer++;
+  if (ditherTimer % 4 === 0) {
+    applyDither(renderer.domElement, dCtx, ditherCanvas.width, ditherCanvas.height);
+  }
+
+  // Random aberration
+  aberTimer++;
+  if (aberTimer > 140 + Math.random() * 200) {
+    aberEl.classList.remove('flash');
+    void aberEl.offsetWidth;
+    aberEl.classList.add('flash');
+    aberTimer = 0;
+  }
+
+  updateBars();
+}
+animate(0);
+
+/* ─────────────────────────────────────────────
+   TIMER
+───────────────────────────────────────────── */
+let timerStart = null;
+let timerRunning = false;
+const timerDisplay = document.getElementById('timer-display');
+
+function formatTimer(ms) {
+  const totalSec = Math.floor(ms / 1000);
+  const h = Math.floor(totalSec / 3600).toString().padStart(2, '0');
+  const m = Math.floor((totalSec % 3600) / 60).toString().padStart(2, '0');
+  const s = (totalSec % 60).toString().padStart(2, '0');
+  return `${h}<span>:</span>${m}<span>:</span>${s}`;
+}
+
+function tickTimer() {
+  if (!timerRunning) return;
+  timerDisplay.innerHTML = formatTimer(Date.now() - timerStart);
+  requestAnimationFrame(tickTimer);
+}
+
+/* ─────────────────────────────────────────────
+   ENTER LOGIC
+───────────────────────────────────────────── */
+const enterOverlay = document.getElementById('enter-overlay');
+const ui = ['logo', 'timer-block', 'title-block', 'info-btn', 'coords', 'audio-bar', 'marquee-wrap'];
+
+enterOverlay.addEventListener('click', () => {
+  enterOverlay.classList.add('hidden');
+  ui.forEach(id => document.getElementById(id).classList.add('visible'));
+  document.getElementById('coords').classList.add('visible');
+
+  timerStart = Date.now();
+  timerRunning = true;
+  tickTimer();
+
+  audioActive = true;
+});
+
+/* ─────────────────────────────────────────────
+   INFO PANEL
+───────────────────────────────────────────── */
+document.getElementById('info-btn').addEventListener('click', () => {
+  document.getElementById('info-panel').classList.add('open');
+});
+document.getElementById('close-btn').addEventListener('click', () => {
+  document.getElementById('info-panel').classList.remove('open');
+});
+</script>
+</body>
+</html>
